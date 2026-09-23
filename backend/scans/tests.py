@@ -1,9 +1,11 @@
+import io
 import shutil
 import tempfile
 from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
+from PIL import Image
 from rest_framework.test import APITestCase
 
 from .models import PlantScan
@@ -19,9 +21,12 @@ class ScanApiTests(APITestCase):
         shutil.rmtree(TEST_MEDIA_ROOT, ignore_errors=True)
 
     def image(self):
+        buffer = io.BytesIO()
+        Image.new("RGB", (2, 2), "green").save(buffer, format="JPEG")
+        buffer.seek(0)
         return SimpleUploadedFile(
             "leaf.jpg",
-            b"fake-jpeg-for-mocked-analysis",
+            buffer.read(),
             content_type="image/jpeg",
         )
 
