@@ -3,7 +3,14 @@ import json
 import mimetypes
 
 from django.conf import settings
-from openai import OpenAI
+from openai import (
+    APIConnectionError,
+    AuthenticationError,
+    BadRequestError,
+    NotFoundError,
+    OpenAI,
+    RateLimitError,
+)
 
 
 class VisionConfigurationError(RuntimeError):
@@ -102,8 +109,34 @@ def analyze_scan(*, scan_type: str, image_path: str, image_name: str) -> dict:
             },
         )
         result = json.loads(response.output_text)
+
+    except AuthenticationError as exc:
+        raise VisionConfigurationError(
+            "OpenAI rejected the API key. Check OPENAI_API_KEY in backend/.env and restart Django."
+        ) from exc
+    except RateLimitError as exc:
+        raise VisionAnalysisError(
+            "OpenAI quota or rate limit reached. Check API billing/credits and usage limits."
+        ) from exc
+    except NotFoundError as exc:
+        raise VisionConfigurationError(
+            f"The configured model '{settings.VISION_MODEL}' is unavailable to this API project."
+        ) from exc
+    except BadRequestError as exc:
+        detail = getattr(exc, "message", None) or str(exc)
+        raise VisionAnalysisError(f"OpenAI rejected the analysis request: {detail}") from exc
+    except APIConnectionError as exc:
+        raise VisionAnalysisError(
+            "Could not connect to OpenAI. Check your internet connection and try again."
+        ) from exc
+    except json.JSONDecodeError as exc:
+        raise VisionAnalysisError(
+            "The AI returned an invalid structured diagnosis. Please try again."
+        ) from exc
     except Exception as exc:
-        raise VisionAnalysisError("Vision analysis failed. Please try again.") from exc
+        raise VisionAnalysisError(
+            f"Unexpected vision error: {type(exc).__name__}: {exc}"
+        ) from exc
 
     return {
         **result,
